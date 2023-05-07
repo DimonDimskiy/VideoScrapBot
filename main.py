@@ -6,8 +6,12 @@ from yt_dlp import YoutubeDL, utils
 from telegram import Update, error
 from telegram.ext import ApplicationBuilder, ContextTypes, MessageHandler, filters
 from telegram.constants import MessageEntityType
+from dotenv import load_dotenv
 
 
+load_dotenv()
+
+TOKEN = os.getenv('TOKEN')
 TEMP_NAME = 'tmp.mp4'
 EXPECTED_FORMAT = '.mp4'
 MAX_FILE_SIZE = 52428800
@@ -66,7 +70,7 @@ def download(url: str) -> None:
         ydl.download(url)
 
 
-app = ApplicationBuilder().token("6055251020:AAHwkEyhuhsh9-5afrm0tx52cP7KzK9IyBk").build()
+app = ApplicationBuilder().token(TOKEN).build()
 
 app.add_handler(MessageHandler(filters.Entity(MessageEntityType.URL), bot_answer))
 app.add_handler(MessageHandler(filters.ALL, bot_text))
