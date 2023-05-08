@@ -1,5 +1,8 @@
+"""
+Telegram bot that downloads videos from received URLs and sends
+them back to user as a mediafile.
+"""
 import os
-import subprocess
 
 
 from yt_dlp import YoutubeDL, utils
@@ -11,20 +14,30 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-TOKEN = os.getenv('TOKEN')
-TEMP_NAME = 'tmp.mp4'
-EXPECTED_FORMAT = '.mp4'
+TOKEN = os.getenv("TOKEN")
+EXPECTED_FORMAT = "mp4"
+TEMP_NAME = "tmp." + EXPECTED_FORMAT
 MAX_FILE_SIZE = 52428800
 
 
-async def bot_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    await update.message.reply_text(f'{update.effective_user.first_name}, please enter video URL')
+async def universal_answer(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """
+    Handles any user input excluded sending URL
+    """
+    await update.message.reply_text(
+        f"{update.effective_user.first_name}, please enter video URL"
+    )
 
 
-async def bot_answer(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+async def link_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """
+    Handles URL sent by user
+    """
     urls = update.message.parse_entities([MessageEntityType.URL])
     if len(urls) > 1:
-        await update.message.reply_text(f"{update.effective_user.first_name}, you entered to much URLs")
+        await update.message.reply_text(
+            f"{update.effective_user.first_name}, you entered to much URLs"
+        )
     else:
         url = urls.popitem()[1]
 
@@ -33,12 +46,16 @@ async def bot_answer(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
             download(url)
             await update.message.reply_text("File downloaded and converted")
         except utils.DownloadError:
-            await update.message.reply_text(f"{update.effective_user.first_name}, you entered an unsupported URL")
+            await update.message.reply_text(
+                f"{update.effective_user.first_name}, you entered an unsupported URL"
+            )
+            return
+        except TypeError:
+            await update.message.reply_text("Unable to convert file into mp4")
             return
 
-        filesize = os.path.getsize(TEMP_NAME)
-        if filesize > MAX_FILE_SIZE:
-            await update.message.reply_text("To large file to upload")
+        if os.path.getsize(TEMP_NAME) > MAX_FILE_SIZE:
+            await update.message.reply_text("File is to large to upload")
             return
 
         await update.message.reply_text("Uploading...")
@@ -48,32 +65,52 @@ async def bot_answer(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
             await update.message.reply_text("Uploading failed, network error")
 
 
-def ensure_mp4(filename: str) -> None:
+def rename(filename: str) -> None:
+    """
+    Function receives name of the file after postprocessing,
+    change it to temporary name to avoid storing few different
+    files, before renaming it ensures that file has expected
+    extension, otherwise it raises TypeError, that will be
+    caught in link_handler function
+    :param filename: str
+    :return: None
+    """
     _, ext = os.path.splitext(filename)
-    if ext != EXPECTED_FORMAT:
-        subprocess.run(['ffmpeg', '-i', filename, TEMP_NAME, '-y'])
-        os.remove(filename)
-    else:
+    if ext == "." + EXPECTED_FORMAT:
         os.rename(filename, TEMP_NAME)
-
-
-params = {
-    'format': 'b[filesize<50M]/ w',
-    'vext': '(mp4 > webm > flv > other > unknown)',
-    'post_hooks': [ensure_mp4],
-    'keep_video': False
-}
+    else:
+        os.remove(filename)
+        raise TypeError("Unexpected file extension")
 
 
 def download(url: str) -> None:
+    """
+    Creates YoutubeDL obj with specified options, runs download
+    format "w" allows to avoid errors "Requested format is not available"
+    in services like https://pikabu.ru/ , when video is hosted not by YouTube
+    [ext!=png] used fix some unexpected behaviour from yt-dlp, usually it
+    doesn't accept URL without video, but I've found URL that contains .png
+    image that yt-dlp downloads and PP converts into mp4 - bug?.
+    https://upload.wikimedia.org/wikipedia/commons/b/b6/Image_created_with_a_mobile_phone.png
+    :param url: a video URL (str)
+    :return: None
+    """
+    params = {
+        "format": f"b[filesize<{MAX_FILE_SIZE}]/w[ext!=png]",
+        "postprocessors": [
+            {"key": "FFmpegVideoConvertor", "preferedformat": EXPECTED_FORMAT}
+        ],
+        "keep_video": False,
+        "post_hooks": [rename],
+    }
     with YoutubeDL(params) as ydl:
         ydl.download(url)
 
 
 app = ApplicationBuilder().token(TOKEN).build()
 
-app.add_handler(MessageHandler(filters.Entity(MessageEntityType.URL), bot_answer))
-app.add_handler(MessageHandler(filters.ALL, bot_text))
+app.add_handler(MessageHandler(filters.Entity(MessageEntityType.URL), link_handler))
+app.add_handler(MessageHandler(filters.ALL, universal_answer))
 
 
 app.run_polling()
