@@ -60,7 +60,11 @@ async def link_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
 
         await update.message.reply_text("Uploading...")
         try:
-            await update.message.reply_document(TEMP_NAME, write_timeout=240)
+            await update.message.reply_document(
+                TEMP_NAME, write_timeout=240, read_timeout=240
+            )
+            # without defining read timeout app running in docker throws an exception
+            # ReadTimeout while running in laptop does not cause this exception
         except error.NetworkError:
             await update.message.reply_text("Uploading failed, network error")
 
@@ -85,10 +89,10 @@ def rename(filename: str) -> None:
 
 def download(url: str) -> None:
     """
-    Creates YoutubeDL obj with specified options, runs download
-    format "w" allows to avoid errors "Requested format is not available"
-    in services like https://pikabu.ru/ , when video is hosted not by YouTube
-    [ext!=png] used fix some unexpected behaviour from yt-dlp, usually it
+    Creates YoutubeDL obj with specified options, runs download.
+    Format "w" allows to avoid errors "Requested format is not available"
+    in services like https://pikabu.ru/ , when video is hosted not by YouTube.
+    [ext!=png] used to fix some unexpected behaviour from yt-dlp, usually it
     doesn't accept URL without video, but I've found URL that contains .png
     image that yt-dlp downloads and PP converts into mp4 - bug?.
     https://upload.wikimedia.org/wikipedia/commons/b/b6/Image_created_with_a_mobile_phone.png
